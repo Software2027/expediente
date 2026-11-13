@@ -1,0 +1,254 @@
+{% extends 'expedientes/base.html' %}
+
+{% block title %}Expediente {{ exp.expediente|default:exp.nro }} — Detalle e Historial{% endblock %}
+
+{% block content %}
+  <p>
+    <a href="{% url 'expedientes:buscador' %}" style="color: #0066cc; text-decoration: none; font-weight: 500;">
+      <i class="fa-solid fa-arrow-left"></i> Volver al buscador
+    </a>
+  </p>
+
+  <!-- Encabezado del Expediente -->
+  <div style="background: white; padding: 1.25rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1.25rem;">
+    <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: .75rem;">
+      <div>
+        <h2 style="margin: 0; color: #0066cc; font-size: 1.4rem;">
+          <i class="fa-solid fa-folder-open"></i> Expediente: {{ exp.expediente|default:"Sin identificar" }}
+        </h2>
+        <div style="color: #555; font-size: .9rem; margin-top: .3rem;">
+          <strong>Trámite:</strong> {{ exp.tipo_tramite|default:exp.tipo_expediente|default:"—" }} |
+          <strong>Iniciador:</strong> {{ exp.responsable_iniciador|default:"—" }} |
+          <strong>Año:</strong> {{ exp.ano|default:"—" }}
+        </div>
+      </div>
+      <div>
+        <span class="badge" style="background: #e7f3ff; color: #004085; font-size: .85rem; padding: .3rem .6rem;">
+          {{ total_movimientos }} pase(s) registrado(s)
+        </span>
+        <span class="badge" style="background: #d4edda; color: #155724; font-size: .85rem; padding: .3rem .6rem; margin-left: .3rem;">
+          {{ total_adjuntos_exp }} archivo(s) digital(es)
+        </span>
+      </div>
+    </div>
+
+    <!-- Adjunto principal o seleccionado -->
+    {% if exp.nombre_archivo %}
+      <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f0f0f0;">
+        <div style="font-size: .85rem; color: #666; margin-bottom: .25rem;">Archivo adjunto de este registro:</div>
+        <div style="font-family: monospace; font-size: 1.05rem; font-weight: bold; color: #155724; word-break: break-all;">
+          <i class="fa-regular fa-file-lines"></i> {{ exp.nombre_archivo }}
+        </div>
+        <div class="pista" style="margin-top: .5rem;">
+          {% if pista.label and pista.texto %}
+            <button type="button" class="btn-copiar" data-copiar="{{ pista.texto|escapejs }}" onclick="copiar(this)">
+              <i class="fa-regular fa-copy"></i> {{ pista.label }}
+            </button>
+            {% if pista.tipo == 'secuencial' %}
+              <span class="secuencial">{{ pista.texto }}</span>
+            {% endif %}
+          {% elif pista.ayuda %}
+            <div class="pista pista-ayuda"><i class="fa-solid fa-circle-info"></i> {{ pista.ayuda }}</div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if messages %}
+    <ul class="mensajes">
+      {% for m in messages %}
+        <li class="msg-{{ m.tags }}">{{ m }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <!-- Formulario de seguimiento manual -->
+  <div style="background: white; padding: 1rem 1.25rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1.5rem;">
+    <h3 style="margin-top: 0; margin-bottom: .6rem; font-size: 1.05rem;"><i class="fa-solid fa-location-dot"></i> Seguimiento y ubicación en disco</h3>
+    <form method="post" action="{% url 'expedientes:marcar_ubicado' exp.pk %}" class="form-seguimiento" style="padding: 0; box-shadow: none;">
+      {% csrf_token %}
+      <label>Ubicado:
+        <select name="ubicado">
+          <option value="" {% if not exp.ubicado %}selected{% endif %}>— Sin marcar —</option>
+          <option value="OK" {% if exp.ubicado == 'OK' %}selected{% endif %}>OK (encontrado en disco)</option>
+          <option value="NO" {% if exp.ubicado == 'NO' %}selected{% endif %}>NO (no encontrado)</option>
+          <option value="DUDOSO" {% if exp.ubicado == 'DUDOSO' %}selected{% endif %}>DUDOSO</option>
+        </select>
+      </label>
+      <label style="flex: 1; min-width: 250px;">Ruta en disco:
+        <input type="text" name="ruta" value="{{ exp.ruta|default:'' }}" placeholder="Ej: D:\Expedientes\2024\Noviembre\..." style="width: 100%;">
+      </label>
+      <button type="submit"><i class="fa-solid fa-floppy-disk"></i> Guardar estado</button>
+      {% if exp.fecha_busqueda %}
+        <small style="color: #666; margin-left: .5rem; align-self: center;">
+          Última búsqueda: {{ exp.fecha_busqueda|date:"d/m/Y H:i" }}
+        </small>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- Historial de pases / Línea de tiempo -->
+  <div style="margin-bottom: 2rem;">
+    <h3 style="font-size: 1.2rem; color: #1a1a1a; margin-bottom: .25rem;">
+      <i class="fa-solid fa-timeline"></i> Historial de Pases y Movimientos del Expediente
+    </h3>
+    <p style="color: #666; font-size: .85rem; margin-top: 0; margin-bottom: 1rem;">
+      Cronología de movimientos y digitalizaciones asociadas a este expediente.
+    </p>
+
+    <div class="timeline">
+      {% for item in historial_pases %}
+        <div class="timeline-item {% if item.pase.tiene_adjunto %}con-adjunto{% endif %}">
+          <div class="timeline-marker">
+            {{ item.pase.numero_pase|default:"0" }}
+          </div>
+          <div class="timeline-content" {% if item.pase.pk == exp.pk %}style="border: 2px solid #0066cc; background: #fafcff;"{% endif %}>
+            <div class="timeline-header">
+              <span class="timeline-pase-title">
+                Pase N° {{ item.pase.numero_pase|default:"0" }}
+                {% if item.pase.cuerpo_numero %}· Cuerpo {{ item.pase.cuerpo_numero }}{% endif %}
+                {% if item.pase.pk == exp.pk %}
+                  <span class="badge" style="background: #0066cc; color: white; font-size: .7rem; margin-left: .3rem;">Registro actual</span>
+                {% endif %}
+              </span>
+              <span class="timeline-fecha">
+                <i class="fa-regular fa-calendar-days"></i> {{ item.pase.fecha|date:"d/m/Y H:i"|default:item.pase.fecha_realizacion|date:"d/m/Y H:i"|default:"—" }}
+              </span>
+            </div>
+
+            <div style="font-size: .85rem; color: #444; margin-bottom: .3rem;">
+              <strong>De:</strong> {{ item.pase.area_iniciadora|default:"Mesa de Entradas" }}
+              {% if item.pase.responsable_emisor or item.pase.responsable_iniciador %}
+                ({{ item.pase.responsable_emisor|default:item.pase.responsable_iniciador }})
+              {% endif %}
+              ➔ <strong>A:</strong> {{ item.pase.area_destino|default:"Área no especificada" }}
+              {% if item.pase.responsable_receptor %}
+                ({{ item.pase.responsable_receptor }})
+              {% endif %}
+            </div>
+
+            {% if item.pase.observaciones %}
+              <div style="font-size: .85rem; color: #555; background: #f8f9fa; padding: .4rem .6rem; border-radius: 4px; margin-top: .4rem;">
+                <strong>Nota/Pase:</strong> {{ item.pase.observaciones }}
+              </div>
+            {% endif %}
+
+            {% if item.pase.tiene_adjunto %}
+              <div class="timeline-adjunto-box">
+                <div>
+                  <div style="font-size: .75rem; color: #155724; font-weight: bold; text-transform: uppercase;">
+                    <i class="fa-solid fa-paperclip"></i> Archivo Digitalizado en este pase:
+                  </div>
+                  <div class="timeline-adjunto-nombre">
+                    <i class="fa-regular fa-file-lines"></i> {{ item.pase.nombre_archivo }}
+                  </div>
+                  {% if item.pase.ubicado %}
+                    <span class="badge badge-{{ item.pase.ubicado|lower }}" style="margin-top: .2rem;">
+                      {{ item.pase.ubicado }}
+                    </span>
+                  {% endif %}
+                </div>
+                <div>
+                  {% if item.pista.label and item.pista.texto %}
+                    <button type="button" class="btn-copiar" style="font-size: .8rem; padding: .35rem .7rem;"
+                            data-copiar="{{ item.pista.texto|escapejs }}" onclick="copiar(this)">
+                      <i class="fa-regular fa-copy"></i> {{ item.pista.label }}
+                    </button>
+                  {% endif %}
+                  {% if item.pase.pk != exp.pk %}
+                    <a href="{% url 'expedientes:detalle' item.pase.pk %}" class="btn-detalle" style="font-size: .8rem; padding: .35rem .7rem; margin-left: .3rem;">
+                      Ver pase <i class="fa-solid fa-arrow-right"></i>
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Tabla técnica de campos completos -->
+  <div style="margin-top: 2rem;">
+    <h3 style="font-size: 1.1rem; color: #1a1a1a; margin-bottom: .6rem;">
+      <i class="fa-solid fa-circle-info"></i> Ficha Técnica del Registro Actual
+    </h3>
+    <table class="tabla-detalle">
+      <tr><th colspan="2">Archivo y Adjunto</th></tr>
+      <tr><td>Nombre de archivo</td><td>{{ exp.nombre_archivo|default:"—" }}</td></tr>
+      <tr><td>Secuencial extraído</td><td>{{ exp.secuencial|default:"—" }}</td></tr>
+      <tr><td>Tipo de nombre</td><td>{{ exp.get_tipo_nombre_display|default:"—" }}</td></tr>
+      <tr><td>Tiene adjunto digital</td><td>{{ exp.tiene_adjunto|yesno:"Sí,No" }}</td></tr>
+      <tr><td>Fecha en nombre</td><td>{{ exp.fecha_nombre|date:"d/m/Y"|default:"—" }}</td></tr>
+
+      <tr><th colspan="2">Expediente y Cuerpo</th></tr>
+      <tr><td>Identificador canónico</td><td>{{ exp.expediente|default:"—" }}</td></tr>
+      <tr><td>IdExpediente (Sistema)</td><td>{{ exp.id_expediente|default:"—" }}</td></tr>
+      <tr><td>Número / Año</td><td>{{ exp.numero|default:"—" }} / {{ exp.ano|default:"—" }}</td></tr>
+      <tr><td>IdCuerpo / N° Cuerpo</td><td>{{ exp.id_cuerpo|default:"—" }} / {{ exp.cuerpo_numero|default:"1" }}</td></tr>
+      <tr><td>Tipo de expediente</td><td>{{ exp.tipo_expediente|default:"—" }}</td></tr>
+      <tr><td>Tipo de trámite</td><td>{{ exp.tipo_tramite|default:"—" }}</td></tr>
+      <tr><td>Folios</td><td>{{ exp.folios|default:"—" }}</td></tr>
+
+      <tr><th colspan="2">Movimiento / Pase</th></tr>
+      <tr><td>IdPase (Sistema)</td><td>{{ exp.id_pase|default:"—" }}</td></tr>
+      <tr><td>Número de Pase</td><td>{{ exp.numero_pase|default:"0" }}</td></tr>
+      <tr><td>Fecha de Realización</td><td>{{ exp.fecha_realizacion|date:"d/m/Y H:i"|default:"—" }}</td></tr>
+      <tr><td>Fecha de Recepción</td><td>{{ exp.fecha_recepcion|date:"d/m/Y H:i"|default:"—" }}</td></tr>
+      <tr><td>Fecha de Registro</td><td>{{ exp.fecha_registro|date:"d/m/Y H:i"|default:"—" }}</td></tr>
+
+      <tr><th colspan="2">Personas y Áreas Intervinientes</th></tr>
+      <tr><td>Iniciador</td><td>{{ exp.responsable_iniciador|default:"—" }}</td></tr>
+      <tr><td>Área Iniciadora</td><td>{{ exp.area_iniciadora|default:"—" }}</td></tr>
+      <tr><td>Emisor del Pase</td><td>{{ exp.responsable_emisor|default:"—" }}</td></tr>
+      <tr><td>Área Destino</td><td>{{ exp.area_destino|default:"—" }}</td></tr>
+      <tr><td>Receptor del Pase</td><td>{{ exp.responsable_receptor|default:"—" }}</td></tr>
+      <tr><td>Operador del Sistema</td><td>{{ exp.operador|default:"—" }}</td></tr>
+
+      <tr><th colspan="2">Observaciones del Trámite</th></tr>
+      <tr><td colspan="2">{{ exp.observaciones|default:"—"|linebreaksbr }}</td></tr>
+    </table>
+  </div>
+
+  <script>
+    function copiar(btn) {
+      const texto = btn.getAttribute('data-copiar');
+      const exito = () => {
+        const original = btn.innerHTML;
+        btn.innerHTML = '✅ Copiado';
+        btn.classList.add('copiado');
+        setTimeout(() => {
+          btn.innerHTML = original;
+          btn.classList.remove('copiado');
+        }, 1500);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(texto).then(exito).catch(() => {
+          copiarFallback(texto, exito);
+        });
+      } else {
+        copiarFallback(texto, exito);
+      }
+    }
+
+    function copiarFallback(texto, callback) {
+      const textarea = document.createElement('textarea');
+      textarea.value = texto;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        callback();
+      } catch (err) {
+        alert('No se pudo copiar: ' + err);
+      }
+      document.body.removeChild(textarea);
+    }
+  </script>
+{% endblock %}

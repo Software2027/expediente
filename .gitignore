@@ -1,0 +1,32 @@
+# Entorno Virtual Python
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache y Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Bases de datos locales y volcados SQL
+*.sqlite3
+*.sqlite3-journal
+*.sql
+
+# Logs y depuración
+*.log
+cpanel_ejecucion.log
+
+# Archivos multimedia subidos por usuarios
+media/
+staticfiles/
+
+# Archivos temporales del sistema y del editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

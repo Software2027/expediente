@@ -1,0 +1,262 @@
+{% extends 'expedientes/base.html' %}
+
+{% block title %}Buscador — Expedientes{% endblock %}
+
+{% block content %}
+  <!-- Formulario de búsqueda principal y filtros -->
+  <form method="get" action="{% url 'expedientes:buscador' %}" class="form-busqueda">
+    <div class="busqueda">
+      <input type="text" name="q" value="{{ q|default:'' }}"
+             placeholder="Expediente (2024-1836-1), archivo (DELGADO.zip), secuencial (041877), apellido, fecha (15/11/2024)…"
+             autofocus autocomplete="off">
+      <button type="submit"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+      {% if hay_busqueda %}
+        <a href="{% url 'expedientes:buscador' %}" class="btn-limpiar"><i class="fa-solid fa-xmark"></i> Limpiar filtros</a>
+      {% endif %}
+    </div>
+    <div class="filtros">
+      <input type="text" name="nro_exp" value="{{ nro_exp|default:'' }}"
+             placeholder="N° Expediente (ej: 1836 o 2024-1836-1)"
+             style="min-width: 190px;" title="Filtrar por número de expediente">
+      <select name="ano">
+        <option value="">Todos los años</option>
+        {% for a in anos_disponibles %}
+          <option value="{{ a }}" {% if ano == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      <select name="tipo">
+        <option value="">Todos los tipos</option>
+        {% for t in tipos_disponibles %}
+          <option value="{{ t }}" {% if tipo == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+      <select name="area" title="Filtrar por área municipal (destino o iniciadora)">
+        <option value="">Todas las áreas</option>
+        {% for ar in areas_disponibles %}
+          <option value="{{ ar }}" {% if area == ar %}selected{% endif %}>{{ ar }}</option>
+        {% endfor %}
+      </select>
+      <input type="date" name="desde" value="{{ desde|default:'' }}" placeholder="Desde" title="Fecha desde">
+      <input type="date" name="hasta" value="{{ hasta|default:'' }}" placeholder="Hasta" title="Fecha hasta">
+      <select name="por_pagina" title="Cantidad de registros por página" onchange="this.form.submit()">
+        <option value="10" {% if por_pagina == 10 %}selected{% endif %}>10 por pág.</option>
+        <option value="25" {% if por_pagina == 25 %}selected{% endif %}>25 por pág.</option>
+        <option value="50" {% if por_pagina == 50 %}selected{% endif %}>50 por pág.</option>
+        <option value="100" {% if por_pagina == 100 %}selected{% endif %}>100 por pág.</option>
+      </select>
+      <button type="submit"><i class="fa-solid fa-filter"></i> Aplicar filtros</button>
+    </div>
+  </form>
+
+  <!-- Resumen de resultados / Exploración -->
+  <section class="resumen-busqueda">
+    <p>
+      {% if hay_busqueda %}
+        <strong>{{ total }}</strong> resultado(s) encontrado(s)
+        {% if q %} para "<strong>{{ q }}</strong>"{% endif %}
+        {% if nro_exp %} · N° Exp: "<strong>{{ nro_exp }}</strong>"{% endif %}
+        {% if ano %} · Año: <strong>{{ ano }}</strong>{% endif %}
+        {% if tipo %} · Tipo: <strong>{{ tipo }}</strong>{% endif %}
+        {% if area %} · Área: <strong>{{ area }}</strong>{% endif %}
+        {% if resumen.con_adjunto %} · {{ resumen.con_adjunto }} con adjunto{% endif %}
+        {% if resumen.sin_adjunto %} · {{ resumen.sin_adjunto }} sin adjunto{% endif %}
+      {% else %}
+        Explorando todos los expedientes registrados (<strong>{{ total }}</strong> movimientos en total).
+      {% endif %}
+      {% if page_obj and page_obj.paginator.num_pages > 1 %}
+        · <em>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }} ({{ por_pagina }} por página)</em>
+      {% endif %}
+    </p>
+  </section>
+
+  <!-- Barra de paginación superior rápida -->
+  {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="paginacion-bar-superior">
+      <div>
+        Mostrando registros <strong>{{ page_obj.start_index }}</strong> al <strong>{{ page_obj.end_index }}</strong> de <strong>{{ total }}</strong>
+      </div>
+      <div style="display: flex; gap: .4rem; align-items: center;">
+        {% if page_obj.has_previous %}
+          <a href="?{{ params_url }}&page={{ page_obj.previous_page_number }}" class="btn-pag" style="padding: .25rem .6rem; font-size: .8rem;">‹ Anterior</a>
+        {% endif %}
+        <span style="font-size: .85rem; color: #555;">Pág. {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?{{ params_url }}&page={{ page_obj.next_page_number }}" class="btn-pag" style="padding: .25rem .6rem; font-size: .8rem;">Siguiente ›</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- Listado de expedientes -->
+  <section class="resultados">
+    {% for r in resultados %}
+      <article class="resultado">
+        <div class="resultado-header">
+          <div class="archivo">
+            <i class="fa-regular fa-file-lines"></i> {{ r.exp.nombre_archivo|default:"(sin adjunto digital)" }}
+          </div>
+          {% if r.exp.ubicado %}
+            <span class="badge badge-{{ r.exp.ubicado|lower }}">{{ r.exp.ubicado }}</span>
+          {% endif %}
+        </div>
+
+        {% if r.pista.label and r.pista.texto %}
+          <div class="pista">
+            <button type="button" class="btn-copiar"
+                    data-copiar="{{ r.pista.texto|escapejs }}"
+                    onclick="copiar(this)">
+              <i class="fa-regular fa-copy"></i> {{ r.pista.label }}
+            </button>
+            {% if r.pista.tipo == 'secuencial' %}
+              <span class="secuencial">{{ r.pista.texto }}</span>
+            {% endif %}
+          </div>
+        {% elif r.pista.ayuda %}
+          <div class="pista pista-ayuda">
+            <i class="fa-solid fa-circle-info"></i> {{ r.pista.ayuda }}
+          </div>
+        {% endif %}
+
+        <div class="meta">
+          <span><strong>Expediente:</strong> {{ r.exp.expediente|default:"—" }}</span>
+          <span><strong>Fecha:</strong> {{ r.exp.fecha|date:"d/m/Y H:i"|default:"—" }}</span>
+          <span><strong>Tipo:</strong> {{ r.exp.tipo_expediente|default:"—" }}</span>
+        </div>
+        <div class="meta">
+          <span><strong>Trámite:</strong> {{ r.exp.tipo_tramite|default:"—" }}</span>
+          <span><strong>Iniciador:</strong> {{ r.exp.responsable_iniciador|default:"—" }}</span>
+          <span><strong>Área destino:</strong> {{ r.exp.area_destino|default:"—" }}</span>
+        </div>
+        {% if r.exp.observaciones %}
+          <div class="meta obs"><strong>Obs.:</strong> {{ r.exp.observaciones }}</div>
+        {% endif %}
+        {% if r.exp.ruta %}
+          <div class="meta ruta"><i class="fa-solid fa-folder-tree"></i> {{ r.exp.ruta }}</div>
+        {% endif %}
+
+        <div class="acciones">
+          <a class="btn-detalle" href="{% url 'expedientes:detalle' r.exp.pk %}">Ver detalle <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+      </article>
+    {% empty %}
+      {% if hay_busqueda %}
+        <div class="sin-resultados">
+          <p>No se encontraron resultados para los criterios seleccionados.</p>
+          <p>Probá ampliando los filtros o utilizando otro formato (ej. número de expediente, secuencial o apellido).</p>
+        </div>
+      {% else %}
+        {% if not mostrar_stats %}
+          <div class="sin-resultados">
+            <p>Escribí algo en el buscador o seleccioná un filtro para empezar.</p>
+          </div>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  </section>
+
+  <!-- Paginación Inferior -->
+  {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="paginacion-wrapper">
+      <div class="paginacion-info">
+        Mostrando registros del {{ page_obj.start_index }} al {{ page_obj.end_index }} de {{ total }}
+      </div>
+      <nav class="paginacion" aria-label="Navegación de páginas">
+        <!-- Botón Primera página -->
+        {% if page_obj.number > 1 %}
+          <a href="?{{ params_url }}&page=1" class="btn-pag" title="Primera página">« Primera</a>
+        {% else %}
+          <span class="btn-pag deshabilitado">« Primera</span>
+        {% endif %}
+
+        <!-- Botón Anterior -->
+        {% if page_obj.has_previous %}
+          <a href="?{{ params_url }}&page={{ page_obj.previous_page_number }}" class="btn-pag" title="Página anterior">‹ Anterior</a>
+        {% else %}
+          <span class="btn-pag deshabilitado">‹ Anterior</span>
+        {% endif %}
+
+        <!-- Números de páginas con ventana inteligente y elipses -->
+        {% for num in page_range %}
+          {% if num == page_obj.number %}
+            <span class="btn-pag activa">{{ num }}</span>
+          {% elif num == '…' or num == '...' %}
+            <span class="btn-pag elipsis">…</span>
+          {% else %}
+            <a href="?{{ params_url }}&page={{ num }}" class="btn-pag">{{ num }}</a>
+          {% endif %}
+        {% endfor %}
+
+        <!-- Botón Siguiente -->
+        {% if page_obj.has_next %}
+          <a href="?{{ params_url }}&page={{ page_obj.next_page_number }}" class="btn-pag" title="Página siguiente">Siguiente ›</a>
+        {% else %}
+          <span class="btn-pag deshabilitado">Siguiente ›</span>
+        {% endif %}
+
+        <!-- Botón Última página -->
+        {% if page_obj.number < page_obj.paginator.num_pages %}
+          <a href="?{{ params_url }}&page={{ page_obj.paginator.num_pages }}" class="btn-pag" title="Última página ({{ page_obj.paginator.num_pages }})">Última »</a>
+        {% else %}
+          <span class="btn-pag deshabilitado">Última »</span>
+        {% endif %}
+      </nav>
+
+      <!-- Salto directo a página -->
+      <form method="get" class="paginacion-ir-form" onsubmit="return irAPagina(this);">
+        {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+        {% if nro_exp %}<input type="hidden" name="nro_exp" value="{{ nro_exp }}">{% endif %}
+        {% if ano %}<input type="hidden" name="ano" value="{{ ano }}">{% endif %}
+        {% if tipo %}<input type="hidden" name="tipo" value="{{ tipo }}">{% endif %}
+        {% if area %}<input type="hidden" name="area" value="{{ area }}">{% endif %}
+        {% if desde %}<input type="hidden" name="desde" value="{{ desde }}">{% endif %}
+        {% if hasta %}<input type="hidden" name="hasta" value="{{ hasta }}">{% endif %}
+        {% if por_pagina %}<input type="hidden" name="por_pagina" value="{{ por_pagina }}">{% endif %}
+        <span style="font-size: .85rem; color: #666;">Ir a pág:</span>
+        <input type="number" name="page" min="1" max="{{ page_obj.paginator.num_pages }}"
+               value="{{ page_obj.number }}" class="paginacion-ir-input">
+        <span style="font-size: .85rem; color: #666;">de {{ page_obj.paginator.num_pages }}</span>
+        <button type="submit" class="paginacion-ir-btn">Ir</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <script>
+    function copiar(btn) {
+      const texto = btn.getAttribute('data-copiar');
+      const exito = () => {
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
+        btn.classList.add('copiado');
+        setTimeout(() => {
+          btn.innerHTML = original;
+          btn.classList.remove('copiado');
+        }, 1500);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(texto).then(exito).catch(() => {
+          copiarFallback(texto, exito);
+        });
+      } else {
+        copiarFallback(texto, exito);
+      }
+    }
+
+    function copiarFallback(texto, callback) {
+      const textarea = document.createElement('textarea');
+      textarea.value = texto;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        callback();
+      } catch (err) {
+        alert('No se pudo copiar: ' + err);
+      }
+      document.body.removeChild(textarea);
+    }
+  </script>
+{% endblock %}
