@@ -15,6 +15,11 @@ __pycache__/
 *.sqlite3-journal
 *.sql
 
+# Migraciones de Django (ignorar migraciones generadas excepto __init__.py)
+*/migrations/*
+!*/migrations/__init__.py
+
+
 # Logs y depuración
 *.log
 cpanel_ejecucion.log
@@ -30,3 +35,4 @@ staticfiles/
 *.swo
 .DS_Store
 Thumbs.db
+
